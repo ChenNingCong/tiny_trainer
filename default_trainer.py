@@ -5,7 +5,7 @@ class AbstractTrainerFactory(ABC):
     def make_model(self) -> nn.Module:
         raise NotImplementedError()
     @abstractmethod
-    def make_optimizer(model) -> torch.optim.Optimizer:
+    def make_optimizer(self, model) -> torch.optim.Optimizer:
         raise NotImplementedError()
     @abstractmethod
     def make_dataloader(self, rank : int) -> Tuple[DataLoader, Optional[DistributedSampler]]:     
