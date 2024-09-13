@@ -10,7 +10,7 @@ class AbstractTrainerFactory(ABC):
     @abstractmethod
     def make_dataloader(self, rank : int) -> Tuple[DataLoader, Optional[DistributedSampler]]:     
         raise NotImplementedError()
-    @staticmethod
+    @abstractmethod
     def make_scheduler(self, optimizer) -> torch.optim.lr_scheduler.LRScheduler:
         raise NotImplementedError()
 
