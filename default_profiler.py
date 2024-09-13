@@ -7,6 +7,7 @@ import glob
 import wandb
 import tempfile
 import torch
+from base_config import ProfilerConfig
 """
 Copied fromm https://pytorch.org/docs/stable/_modules/torch/profiler/profiler.html#tensorboard_trace_handler
 """
@@ -49,20 +50,20 @@ class WandbTracerHandler(TensorBoardTracerHandler):
         profile_art.add_file(glob.glob(os.path.join(self.dir_name, "*.pt.trace.json"))[0], "trace.pt.trace.json")
         wandb.run.log_artifact(profile_art)
         
-def make_default_profiler():
+def make_default_profiler(config : ProfilerConfig):
     return profile(
         activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA],
-        profile_memory=True, 
-        record_shapes=True,
-        with_flops=True,
+        profile_memory=config.profile_memory, 
+        record_shapes=config.record_shapes,
+        with_flops=config.with_flops,
         # add stack trace here
-        with_stack=True,
+        with_stack=config.with_stack,
         schedule = schedule(
-                    skip_first=5,
-                    wait=2,
-                    warmup=2,
-                    active=5,
-                    repeat=1),
+                    skip_first=config.skip_first,
+                    wait=config.wait,
+                    warmup=config.warmup,
+                    active=config.active,
+                    repeat=config.repeat),
         # Workaround by https://github.com/pytorch/pytorch/issues/100253
         experimental_config=torch._C._profiler._ExperimentalConfig(verbose=True),
         on_trace_ready = WandbTracerHandler())

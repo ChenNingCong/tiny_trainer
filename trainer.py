@@ -17,6 +17,9 @@ import torch.multiprocessing as mp
 from contextlib import nullcontext
 from default_profiler import *
 
+# configuration file
+from base_config import TrainerConfig
+
 import faulthandler
 import signal
 faulthandler.enable(all_threads=True)
@@ -26,28 +29,7 @@ import random
 import numpy as np
 # import tracemalloc
 # import objgraph
-@dataclass
-class TrainerConfig:
-    # ddp setting
-    world_size : int
-    # training setting
-    epoch : int
-    gradient_accum_step : int
-    dtype : Any
-    clip_norm : float
-    # evaluation setting
-    eval_n_sample : int
-    save_n_sample : int
-    # torch.compile setting
-    compile_model : bool
-    # wandb setting
-    enable_wandb : bool
-    project_name : str
-    run_name : str
-    # profiler setting
-    profiler : Any
-    enable_profile : bool
-    
+
 class Trainer(ABC):
     rank : Final[int]
     model : Union[nn.Module, DDP]
@@ -83,7 +65,10 @@ class Trainer(ABC):
         self.ep : int = 0
         self.total_step : int = 0
         self.micro_step : int = 0
-        self.profiler_fn = config.profiler
+        if self.config.enable_profile:
+            self.profiler_fn = make_default_profiler
+        else:
+            self.profiler_fn = None
 
     def setup_ddp(self):
         rank = self.rank
@@ -170,7 +155,7 @@ class Trainer(ABC):
         if _profiler is None:
             _profiler = nullcontext()
         else:
-            _profiler = self.profiler_fn()
+            _profiler = self.profiler_fn(self.config.profiler_config)
         # tracemalloc.start(10)
         # self.begin_snapshot = tracemalloc.take_snapshot()
         with _profiler as profiler:
@@ -257,10 +242,6 @@ class DefaultTrainer(Trainer):
         self.timer : Timer = Timer()
         self.eval_logger = MonotonicCounter(i = config.eval_n_sample, f = self.eval_model)
         self.save_logger = MonotonicCounter(i = config.save_n_sample, f = self.save_model)
-        if config.enable_profile and config.profiler is None:
-            self.profiler_fn = make_default_profiler
-        else:
-            self.profiler_fn = None
     
     @abstractmethod
     def eval_model(self, i, is_debug = False):
