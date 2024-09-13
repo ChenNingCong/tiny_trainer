@@ -18,7 +18,7 @@ from contextlib import nullcontext
 from default_profiler import *
 
 # configuration file
-from base_config import TrainerConfig
+from base_config import TrainerConfig, check_config
 
 import faulthandler
 import signal
@@ -43,6 +43,7 @@ class Trainer(ABC):
                  scheduler : Callable[[torch.optim.Optimizer], torch.optim.lr_scheduler.LRScheduler],
                  dataloader_sampler : Callable[[int], Tuple[DataLoader, Optional[DistributedSampler]]],
                  config  : TrainerConfig):
+        check_config(config)
         self.model_fn = model
         self.optimizer_fn = optimizer
         self.scheduler_fn = scheduler

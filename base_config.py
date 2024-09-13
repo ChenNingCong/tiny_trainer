@@ -49,3 +49,8 @@ cs.store(group="base", name="base_trainer", node=TrainerConfig)
 def generate_template():
     cfg = TrainerConfig()
     print(OmegaConf.to_yaml(cfg))
+
+def check_config(cfg):
+    missing_keys: set[str] = OmegaConf.missing_keys(cfg)
+    if missing_keys:
+        raise RuntimeError(f"Got missing keys in config:\n{missing_keys}")
