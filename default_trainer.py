@@ -1,5 +1,7 @@
 from abstract_trainer import *
 import wandb
+from omegaconf import OmegaConf
+
 class AbstractTrainerFactory(ABC):
     @abstractmethod
     def make_model(self) -> nn.Module:
@@ -38,7 +40,7 @@ class DefaultTrainer(Trainer):
                 # Set the project where this run will be logged
                 project=self.config.project_name,
                 # Track hyperparameters and run metadata
-                config=asdict(self.config),
+                config=OmegaConf.to_container(self.config),
                 name = self.config.run_name,
                 mode = None if self.config.enable_wandb else 'disabled'
             )
