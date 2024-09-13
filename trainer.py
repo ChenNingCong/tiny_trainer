@@ -28,20 +28,23 @@ import numpy as np
 # import objgraph
 @dataclass
 class TrainerConfig:
+    # ddp setting
     world_size : int
+    # training setting
     epoch : int
     gradient_accum_step : int
     dtype : Any
     clip_norm : float
+    # evaluation setting
     eval_n_sample : int
     save_n_sample : int
-    
+    # torch.compile setting
     compile_model : bool
-
+    # wandb setting
     enable_wandb : bool
     project_name : str
     run_name : str
-
+    # profiler setting
     profiler : Any
     enable_profile : bool
     
