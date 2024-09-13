@@ -53,7 +53,7 @@ class Trainer(ABC):
         self.config = config
         self.epoch = config.epoch
         self.gradient_accum_step = config.gradient_accum_step
-        self.dtype = config.dtype
+        self.dtype = eval(config.dtype)
         # backward compatible
         try:
             self.scaler = torch.cuda.amp.GradScaler()

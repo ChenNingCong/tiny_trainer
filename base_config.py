@@ -18,7 +18,15 @@ class ProfilerConfig:
     active: int = 5
     repeat: int = 1
 
+    
+def register_config(group : str, name : str):
+    def wrapper(node_type):
+        cs = ConfigStore.instance()
+        cs.store(group=group, name=name, node=node_type)
+        return node_type
+    return wrapper
 
+@register_config(group="base", name="base_trainer")
 @dataclass
 class TrainerConfig:
     # ddp setting
@@ -40,11 +48,6 @@ class TrainerConfig:
     # profiler setting
     enable_profile: bool = False
     profiler_config: ProfilerConfig = field(default_factory=ProfilerConfig)
-
-
-# register name group
-cs = ConfigStore.instance()
-cs.store(group="base", name="base_trainer", node=TrainerConfig)
 
 def generate_template():
     cfg = TrainerConfig()
