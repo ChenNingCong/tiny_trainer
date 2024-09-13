@@ -71,7 +71,11 @@ class Trainer(ABC):
         self.epoch = config.epoch
         self.gradient_accum_step = config.gradient_accum_step
         self.dtype = config.dtype
-        self.scaler = torch.GradScaler()
+        # backward compatible
+        try:
+            self.scaler = torch.cuda.amp.GradScaler()
+        except:
+            self.scaler = torch.GradScaler()
         self.clip_norm : float = config.clip_norm
         self.world_size : Final[int] = config.world_size
     
