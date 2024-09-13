@@ -26,7 +26,7 @@ def register_config(group : str, name : str):
         return node_type
     return wrapper
 
-@register_config(group="base", name="base_trainer")
+@register_config(group="trainer", name="base")
 @dataclass
 class TrainerConfig:
     # ddp setting
