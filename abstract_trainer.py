@@ -6,8 +6,8 @@ import contextlib
 import torch
 import torch.nn as nn
 from typing import Any, Union, Final, Callable, Optional, Tuple
-from timer import Timer
-from util import MonotonicCounter
+from .timer import Timer
+from .util import MonotonicCounter
 from abc import abstractmethod, ABC
 from torch.nn.parallel import DistributedDataParallel as DDP
 import torch.distributed as dist
@@ -15,10 +15,10 @@ from torch.utils.data import DataLoader, DistributedSampler
 import os
 import torch.multiprocessing as mp
 from contextlib import nullcontext
-from default_profiler import *
+from .default_profiler import *
 
 # configuration file
-from base_config import TrainerConfig, check_config
+from .base_config import TrainerConfig, check_config
 
 import faulthandler
 import signal

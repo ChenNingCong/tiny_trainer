@@ -7,7 +7,7 @@ import glob
 import wandb
 import tempfile
 import torch
-from base_config import ProfilerConfig
+from .base_config import ProfilerConfig
 """
 Copied fromm https://pytorch.org/docs/stable/_modules/torch/profiler/profiler.html#tensorboard_trace_handler
 """

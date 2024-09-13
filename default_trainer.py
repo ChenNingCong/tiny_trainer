@@ -1,4 +1,4 @@
-from abstract_trainer import *
+from .abstract_trainer import *
 import wandb
 from omegaconf import OmegaConf
 
