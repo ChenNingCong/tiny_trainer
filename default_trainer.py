@@ -8,7 +8,7 @@ class AbstractTrainerFactory(ABC):
     def make_optimizer(self, model) -> torch.optim.Optimizer:
         raise NotImplementedError()
     @abstractmethod
-    def make_dataloader(self, rank : int) -> Tuple[DataLoader, Optional[DistributedSampler]]:     
+    def make_dataloader(self, rank : int) -> Tuple[Any, DataLoader, Optional[DistributedSampler]]:     
         raise NotImplementedError()
     @abstractmethod
     def make_scheduler(self, optimizer) -> torch.optim.lr_scheduler.LRScheduler:
