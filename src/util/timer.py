@@ -1,5 +1,9 @@
 import time
 from collections import deque
+"""
+A moving average to measure the rate of function calls to the method `step`.
+It's defined as 1 second / (# call to `step`)
+"""
 class Timer():
     def __init__(self, maxitem=10):
         self.ticks = deque()

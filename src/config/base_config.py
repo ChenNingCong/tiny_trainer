@@ -3,7 +3,7 @@ import hydra
 from dataclasses import dataclass, field
 from omegaconf import MISSING
 from hydra.core.config_store import ConfigStore
-
+from .util import register_config
 
 @dataclass
 class ProfilerConfig:
@@ -17,14 +17,6 @@ class ProfilerConfig:
     warmup: int = 2
     active: int = 5
     repeat: int = 1
-
-    
-def register_config(group : str, name : str):
-    def wrapper(node_type):
-        cs = ConfigStore.instance()
-        cs.store(group=group, name=name, node=node_type)
-        return node_type
-    return wrapper
 
 @register_config(group="trainer", name="base")
 @dataclass
@@ -48,12 +40,3 @@ class TrainerConfig:
     # profiler setting
     enable_profile: bool = False
     profiler_config: ProfilerConfig = field(default_factory=ProfilerConfig)
-
-def generate_template():
-    cfg = TrainerConfig()
-    print(OmegaConf.to_yaml(cfg))
-
-def check_config(cfg):
-    missing_keys: set[str] = OmegaConf.missing_keys(cfg)
-    if missing_keys:
-        raise RuntimeError(f"Got missing keys in config:\n{missing_keys}")
