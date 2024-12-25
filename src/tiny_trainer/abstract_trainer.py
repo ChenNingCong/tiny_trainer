@@ -229,8 +229,8 @@ class Trainer(ABC):
                 for obj in process_bar:
                     self.model.train()
                     self.total_step += 1
-                    # if we don't use ddp, then there's no need sync
-                    if (self.micro_step + 1) % self.gradient_accum_step == 0 and self.use_ddp:
+                    # if we don't use ddp, then there's no no_sync function (only DDP need sync)
+                    if (self.micro_step + 1) % self.gradient_accum_step == 0 or (not self.use_ddp):
                         # enable sync
                         sync_context = contextlib.nullcontext()
                     else:
