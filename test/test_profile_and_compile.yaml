@@ -1,0 +1,25 @@
+defaults:
+  - trainer: base
+  - _self_
+trainer:
+  ddp:
+    enable : False
+    world_size : 1
+  gradient_accum_step: 2
+  dtype: torch.float16
+  epoch : 4
+  use_cuda : False
+  eval_n_sample : 10
+  save_n_sample : 10
+  val_n_sample : 10
+  compile_model:
+    enable: True
+    mode: default
+  wandb:
+    enable: True
+    project_name : "hello"
+    run_name : "hello"
+  profiler:
+    enable: True
+    filename: "trace.json"
+

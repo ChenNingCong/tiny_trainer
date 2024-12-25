@@ -1,0 +1,18 @@
+defaults:
+  - trainer: base
+  - _self_
+trainer:
+  ddp:
+    enable : False
+    world_size : 1
+  epoch : 4
+  use_cuda : False
+  eval_n_sample : 10
+  save_n_sample : 10
+  val_n_sample : 10
+  wandb:
+    project_name : "hello"
+    run_name : "hello"
+  profiler:
+    filename: "trace.json"
+

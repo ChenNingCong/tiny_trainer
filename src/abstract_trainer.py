@@ -6,8 +6,7 @@ import contextlib
 import torch
 import torch.nn as nn
 from typing import Any, Union, Final, Callable, Optional, Tuple
-from .timer import Timer
-from .util import MonotonicCounter
+from .util import Timer, MonotonicCounter
 from abc import abstractmethod, ABC
 from torch.nn.parallel import DistributedDataParallel as DDP
 import torch.distributed as dist
@@ -16,9 +15,10 @@ import os
 import torch.multiprocessing as mp
 from contextlib import nullcontext
 from .default_profiler import *
+from .util import set_all_seed
 
 # configuration file
-from .base_config import TrainerConfig, check_config
+from .config import TrainerConfig, check_config, DDPMode
 
 import faulthandler
 import signal
@@ -44,29 +44,37 @@ class Trainer(ABC):
                  dataloader_sampler : Callable[[int], Tuple[DataLoader, Optional[DistributedSampler]]],
                  config  : TrainerConfig):
         check_config(config)
+        # model and optimizer setting
         self.model_fn = model
         self.optimizer_fn = optimizer
         self.scheduler_fn = scheduler
         self.dataloader_sampler_fn = dataloader_sampler
 
-        # constant
+        # constant - derived from config file
         self.config = config
         self.epoch = config.epoch
         self.gradient_accum_step = config.gradient_accum_step
         self.dtype = eval(config.dtype)
+        # whether to use ddp or not
+        self.use_ddp = self.config.ddp.enable
+
         # backward compatible
-        try:
-            self.scaler = torch.cuda.amp.GradScaler()
-        except:
-            self.scaler = torch.GradScaler()
+        # try:
+        #     self.scaler = torch.cuda.amp.GradScaler()
+        # except:
+        #     self.scaler = torch.GradScaler()
+        self.scaler = torch.amp.GradScaler("cuda" if self.config.use_cuda else "cpu")
         self.clip_norm : float = config.clip_norm
-        self.world_size : Final[int] = config.world_size
+        self.world_size : Final[int] = config.ddp.world_size
     
-        # mutable state
+        # mutable state - Important - we need to preserve them during checkpoint
         self.ep : int = 0
         self.total_step : int = 0
         self.micro_step : int = 0
-        if self.config.enable_profile:
+        # log data, not checkpointed
+        self.log_data = {}
+        # profiler is not saved
+        if self.config.profiler.enable:
             self.profiler_fn = make_default_profiler
         else:
             self.profiler_fn = None
@@ -80,22 +88,27 @@ class Trainer(ABC):
         os.environ['WORLD_SIZE'] = str(world_size)
         os.environ['RANK'] = str(rank)
         # initialize the process group
-        if not dist.is_initialized():
+        if not dist.is_initialized() and self.use_ddp:
             dist.init_process_group("nccl", rank=rank, world_size=world_size)
-        torch.cuda.set_device(rank)
+        if self.device != "cpu":
+            torch.cuda.set_device(rank)
+        # we use a different seed on each rank
+        set_all_seed(rank)
         # === reproducibility ===
         # we give a different seed on every model
         # this won't impact model weight, because DDP will copy weights
         # and this won't impact data sampler
         # we need to apply a different seed
         # otherwise, we always get the same seed on every device, which may break the diffusion model!
-
-        random.seed(rank)
-        np.random.seed(rank)
-        torch.manual_seed(rank)
-        torch.cuda.manual_seed(rank)
         # enable fp32 here
+        # TODO : add a flag here
         torch.set_float32_matmul_precision("high")
+    @property
+    def device(self):
+        if self.config.use_cuda:
+            return self.rank
+        else:
+            return "cpu"
 
     def initialize_on_rank(self, rank):
         self.rank = rank
@@ -107,21 +120,28 @@ class Trainer(ABC):
         # give a chance to setup dataloader
         self.datasetinfo, self.dataloader, self.sampler = self.dataloader_sampler_fn(rank)
         # then we actually create the model on each device
-        self.model = self.model_fn().to(rank)
-        if self.config.compile_model:
+        self.model = self.model_fn().to(self.device)
+        # TODO : change the order of these two functions
+        # firstly DDP then torch.compile
+        if self.config.compile_model.enable:
             # we can actually use disable here.
-            self.model = torch.compile(self.model, dynamic=False)
+            self.model = torch.compile(self.model, dynamic=False, mode=self.config.compile_model.mode)
         # TODO : masked transformer will drop mask at late training stage
         # which causes some parameters unused, so we need to turn on this option here
-        self.model = DDP(self.model.to(rank), find_unused_parameters=True)
+        self.model = self.model.to(self.device)
+        if self.use_ddp:
+            self.model = DDP(self.model, find_unused_parameters=True)
         self.optimizer = self.optimizer_fn(self.model)
         self.scheduler = self.scheduler_fn(self.optimizer)
 
     def run(self):
-        if self.world_size > 1:
-            mp.spawn(self._run, args=(), nprocs=self.world_size, join=True)
+        if self.config.ddp.mode == DDPMode.spawn:
+            if self.world_size > 1:
+                mp.spawn(self._run, args=(), nprocs=self.world_size, join=True)
+            else:
+                self._run(0)
         else:
-            self._run(0)
+            raise NotImplementedError("torchrun is not tested yet")
 
     def _run(self, rank):
         self.initialize_on_rank(rank)
@@ -145,22 +165,57 @@ class Trainer(ABC):
         pass
 
     def on_training_end(self):
-        dist.destroy_process_group()
+        if self.use_ddp:
+            dist.destroy_process_group()
 
-    def train(self):
+    def checkpoint_model(self):
+        model = self.model
+        for i in range(2):
+            if hasattr(model, "module"):
+                model = model.module
+            if hasattr(model, "_orig_mod"):
+                model = model._orig_mod
+        return model
+    
+    # def create_checkpoint(self):
+    #     # checkpoint is typically huge
+    #     # because we need to save the state for all optimizers and all ranks
+    #     trainer_state = {
+    #         "total_step" : self.total_step,
+    #         "ep" : self.ep
+    #     }
+    #     seed = {
+    #         "torch_seed" : torch.get_rng_state(),
+    #         "torch_cuda_seed" : torch.cuda.get_rng_state(),
+    #         "python_seed" : random.getstate(),
+    #         "numpy_seed" : np.random.get_state()
+    #     }
+    #     model_opt = {
+    #         "model" : self.checkpoint_model().state_dict(),
+    #         "optimizer" : self.optimizer.state_dict(),
+    #         "scheduler" : self.scheduler.state_dict(),
+    #         "scaler" : self.scaler.state_dict(),
+    #         "dataloader" : self.dataloader.state_dict()
+    #     }
+    #     return {
+    #         "trainer_state" : trainer_state,
+    #         "seed" : seed,
+    #         "model_opt" : model_opt
+    #     }
+
+    def train(self, checkpoint = None):
         self.on_training_begin()
-        self.total_step = 0
         # maintain a loss counter here
-        self.avg_loss : torch.Tensor = torch.zeros((1,), device=self.rank, requires_grad=False)
+        self.avg_loss : torch.Tensor = torch.zeros((1,), device=self.device, requires_grad=False)
         _profiler = self.profiler_fn
         if _profiler is None:
             _profiler = nullcontext()
         else:
-            _profiler = self.profiler_fn(self.config.profiler_config)
+            _profiler = self.profiler_fn(self.config.profiler)
         # tracemalloc.start(10)
         # self.begin_snapshot = tracemalloc.take_snapshot()
         with _profiler as profiler:
-            for ep in tqdm(range(self.epoch), position=0, leave=True):
+            for ep in tqdm(range(self.ep, self.epoch), position=0, leave=True):
                 self.ep = ep
                 self.on_epoch_begin()
                 self.optimizer.zero_grad(set_to_none = True)
@@ -171,7 +226,8 @@ class Trainer(ABC):
                 for obj in process_bar:
                     self.model.train()
                     self.total_step += 1
-                    if (self.micro_step + 1) % self.gradient_accum_step == 0:
+                    # if we don't use ddp, then there's no need sync
+                    if (self.micro_step + 1) % self.gradient_accum_step == 0 or (not self.use_ddp):
                         # enable sync
                         sync_context = contextlib.nullcontext()
                     else:
@@ -180,7 +236,7 @@ class Trainer(ABC):
                         # this is important
                         # we prepare inputs outside of amp, otherwise inputs will be computed in low precision  
                         model_inputs = self.prepare_input(obj)
-                        with torch.autocast(enabled=(self.dtype != torch.float32), device_type="cuda", dtype=self.dtype):
+                        with torch.autocast(enabled=(self.dtype != torch.float32), device_type="cuda" if self.config.use_cuda else "cpu", dtype=self.dtype):
                             loss = self.calculate_loss(**model_inputs)
                             loss = loss / self.gradient_accum_step
                         # we must detach the gradient
@@ -209,14 +265,29 @@ class Trainer(ABC):
                                 profiler.step()
                     # we only perform these operations at the end of microstep
                     if (self.micro_step + 1) % self.gradient_accum_step == 0:
-                        dist.all_reduce(self.avg_loss, op=dist.ReduceOp.AVG)
+                        if self.use_ddp:
+                            dist.all_reduce(self.avg_loss, op=dist.ReduceOp.AVG)
+                        self.log_data["total_step"] = self.total_step
+                        self.log_data["train/avg_loss"] = self.avg_loss.item()
+                        self.log_data["train/epoch"] = self.ep
+                        self.log_data["train/grad_scale"] = self.scaler.get_scale()
+                        self.log_data["train/grad_norm"] = self.grad_norm.item()
+                        self.log_data["train/lr"] = self.scheduler.get_last_lr()[-1]
                         self.on_macro_step_end()
+                        if self.rank == 0:
+                            if self.config.wandb.enable:
+                                wandb.log(self.log_data, commit=True)
+
                         # we reset the values at the end of microstep for every process
                         # reset it...
                         self.avg_loss = torch.zeros_like(self.avg_loss)
+                        # reset logging data
+                        self.log_data = {}
+
                     self.micro_step += 1
                 # at the end of one epoch, we synchronize manually
-                dist.barrier()
+                if self.use_ddp:
+                    dist.barrier()
                 # print("Analyzing memory allocation")
                 # gc.collect()
                 # print(objgraph.show_most_common_types())

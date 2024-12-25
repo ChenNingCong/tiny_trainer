@@ -34,18 +34,23 @@ class DefaultTrainer(Trainer):
     def eval_model(self, i, is_debug = False):
         pass
 
+    @abstractmethod
+    def val_model(self, i, is_debug = False):
+        pass
+
     def on_training_begin(self):
         if self.rank == 0:
             wandb.init(
                 # Set the project where this run will be logged
-                project=self.config.project_name,
+                project=self.config.wandb.project_name,
                 # Track hyperparameters and run metadata
                 config=OmegaConf.to_container(self.config),
-                name = self.config.run_name,
-                mode = None if self.config.enable_wandb else 'disabled'
+                name = self.config.wandb.run_name,
+                mode = None if self.config.wandb.enable else 'disabled'
             )
         self.save_model(0, is_debug = True)
         self.eval_model(0, is_debug = True)
+        self.val_model(0, is_debug=True)
 
     def on_training_end(self):
         if self.rank == 0:
@@ -55,14 +60,9 @@ class DefaultTrainer(Trainer):
     def save_model(self, i, is_debug : bool = False):
         if self.rank == 0:
             model_name = f"model-{i}.pt"
-            # save the model here, firstly we need to unwrap the DDP module, then the torch.compile module
-            module = self.model.module
-            # we support both compiled and uncompiled module, so check the existence of _orig_mod
-            if hasattr(module, "_orig_mod"):
-                module = module._orig_mod
-            # Save a model file manually from the current directory:
+            model = self.checkpoint_model()
             if not is_debug:
-                torch.save(module, os.path.join(wandb.run.dir, model_name))
+                torch.save(model, os.path.join(wandb.run.dir, model_name))
                 wandb.save(model_name)
 
     def on_macro_step_end(self):
@@ -71,11 +71,6 @@ class DefaultTrainer(Trainer):
         self.save_logger.update(total_sample)
         if self.rank == 0:
             self.timer.step()
-            # processed batches in a macro step
-            wandb.log({"sample_per_second" : self.gradient_accum_step * self.world_size * self.dataloader.batch_size * self.timer.rate()}, commit=False)
-            wandb.log({"grad_scale" : self.scaler.get_scale()}, commit=False)
-            wandb.log({"grad_norm": self.grad_norm.item()}, commit = False)
-            wandb.log({"lr": self.scheduler.get_last_lr()[-1]}, commit = False)
-            wandb.log({"epoch": self.ep}, commit = False)
+            self.log_data["train/sample_per_second"] = self.gradient_accum_step * self.world_size * self.dataloader.batch_size * self.timer.rate()
             wandb.log({"loss": self.avg_loss[0].item()}, commit=True)
         
