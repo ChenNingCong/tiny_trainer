@@ -79,7 +79,7 @@ class Trainer(ABC):
         else:
             self.profiler_fn = None
 
-    def setup_ddp(self):
+    def setup_ddp(self, use_cuda : bool):
         rank = self.rank
         world_size = self.world_size
         os.environ['MASTER_ADDR'] = 'localhost'
@@ -89,8 +89,12 @@ class Trainer(ABC):
         os.environ['RANK'] = str(rank)
         # initialize the process group
         if not dist.is_initialized() and self.use_ddp:
-            dist.init_process_group("nccl", rank=rank, world_size=world_size)
-        if self.device != "cpu":
+            if use_cuda:
+                backend="nccl"
+            else:
+                backend="gloo"
+            dist.init_process_group(backend=backend, rank=rank, world_size=world_size)
+        if use_cuda:
             torch.cuda.set_device(rank)
         # we use a different seed on each rank
         set_all_seed(rank)
@@ -116,7 +120,7 @@ class Trainer(ABC):
         if self.rank != 0:
             self.profiler_fn = None
         # set up ddp
-        self.setup_ddp()
+        self.setup_ddp(self.config.use_cuda)
         # give a chance to setup dataloader
         self.datasetinfo, self.dataloader, self.sampler = self.dataloader_sampler_fn(rank)
         # then we actually create the model on each device
@@ -266,7 +270,12 @@ class Trainer(ABC):
                     # we only perform these operations at the end of microstep
                     if (self.micro_step + 1) % self.gradient_accum_step == 0:
                         if self.use_ddp:
-                            dist.all_reduce(self.avg_loss, op=dist.ReduceOp.AVG)
+                            if self.config.use_cuda:
+                                dist.all_reduce(self.avg_loss, op=dist.ReduceOp.AVG)
+                            else:
+                                # gloo cpu backend doesn't support AVG, a work around here
+                                dist.all_reduce(self.avg_loss, op=dist.ReduceOp.SUM)
+                                self.avg_loss /= self.config.ddp.world_size
                         self.log_data["total_step"] = self.total_step
                         self.log_data["train/avg_loss"] = self.avg_loss.item()
                         self.log_data["train/epoch"] = self.ep

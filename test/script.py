@@ -3,19 +3,20 @@ import os
 import subprocess
 import shlex
 
-def run_coverage_for_yaml():
-    # Get all yaml files in current directory
-    yaml_files = glob.glob("*.yaml") + glob.glob("*.yml")
-    
-    if not yaml_files:
-        print("No YAML files found in current directory")
-        return
-    
+def run_coverage_for_yaml(yaml_files):
+    if len(yaml_files) == 0:
+        # Get all yaml files in current directory
+        yaml_files = glob.glob("*.yaml") + glob.glob("*.yml")
+        
+        if not yaml_files:
+            print("No YAML files found in current directory")
+            return
+        
     coverage_files = []
     print(yaml_files)
     for yaml_file in yaml_files:
         print(f"Running coverage for {yaml_file}")
-        coverage_file = f'{yaml_file}..coverage'
+        coverage_file = f'{yaml_file}.coverage'
         try:
             # Run coverage directly using command line
             new_env = os.environ.copy()
@@ -39,4 +40,13 @@ def run_coverage_for_yaml():
         print("No coverage data was generated")
 
 if __name__ == "__main__":
-    run_coverage_for_yaml()
+    import argparse
+    parser = argparse.ArgumentParser(description='Run coverage')
+    # Add arguments
+    parser.add_argument('--script', default=None, type=str, help='A name of script')
+    args = parser.parse_args()
+    if args.script is None:
+        scripts = []
+    else:
+        scripts = [args.script]
+    run_coverage_for_yaml(scripts)
