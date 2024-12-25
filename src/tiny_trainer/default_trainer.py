@@ -72,5 +72,4 @@ class DefaultTrainer(Trainer):
         if self.rank == 0:
             self.timer.step()
             self.log_data["train/sample_per_second"] = self.gradient_accum_step * self.world_size * self.dataloader.batch_size * self.timer.rate()
-            wandb.log({"loss": self.avg_loss[0].item()}, commit=True)
         

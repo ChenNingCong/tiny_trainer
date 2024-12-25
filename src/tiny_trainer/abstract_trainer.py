@@ -127,14 +127,13 @@ class Trainer(ABC):
         self.model = self.model_fn().to(self.device)
         # TODO : change the order of these two functions
         # firstly DDP then torch.compile
+        if self.use_ddp:
+            self.model = DDP(self.model, find_unused_parameters=True, device_ids=[self.device])
         if self.config.compile_model.enable:
             # we can actually use disable here.
             self.model = torch.compile(self.model, dynamic=False, mode=self.config.compile_model.mode)
         # TODO : masked transformer will drop mask at late training stage
         # which causes some parameters unused, so we need to turn on this option here
-        self.model = self.model.to(self.device)
-        if self.use_ddp:
-            self.model = DDP(self.model, find_unused_parameters=True)
         self.optimizer = self.optimizer_fn(self.model)
         self.scheduler = self.scheduler_fn(self.optimizer)
 
@@ -231,7 +230,7 @@ class Trainer(ABC):
                     self.model.train()
                     self.total_step += 1
                     # if we don't use ddp, then there's no need sync
-                    if (self.micro_step + 1) % self.gradient_accum_step == 0 or (not self.use_ddp):
+                    if (self.micro_step + 1) % self.gradient_accum_step == 0 and self.use_ddp:
                         # enable sync
                         sync_context = contextlib.nullcontext()
                     else:
