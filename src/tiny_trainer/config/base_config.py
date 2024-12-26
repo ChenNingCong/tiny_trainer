@@ -74,6 +74,8 @@ class TrainerConfig:
     gradient_accum_step: int = 1
     # support for mixed precision training
     dtype: str = "torch.float32"
+    # whether to scale the loss using amp.GradScaler
+    use_amp_scaler : bool = True
     # support for norm clipping
     clip_norm: float = 1.0
     # validation and evaluation setting

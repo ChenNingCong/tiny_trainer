@@ -57,6 +57,7 @@ class Trainer(ABC):
         self.dtype = eval(config.dtype)
         # whether to use ddp or not
         self.use_ddp = self.config.ddp.enable
+        self.use_scaler = self.config.use_amp_scaler
 
         # backward compatible
         # try:
@@ -246,19 +247,26 @@ class Trainer(ABC):
                         # otherwise the computation graph will leak memory...
                         with torch.no_grad():
                             self.avg_loss[0] += loss.detach()
-                        # call backward for every sample
-                        self.scaler.scale(loss).backward()
+                        if self.use_scaler:
+                            # call backward for every sample
+                            self.scaler.scale(loss).backward()
+                        else:
+                            loss.backward()
                         # important : no_sync must wrap both forward and backward pass
                         if (self.micro_step + 1) % self.gradient_accum_step == 0:
-                            # Unscales the gradients of optimizer's assigned params in-place
-                            self.scaler.unscale_(self.optimizer)
+                            if self.use_scaler:
+                                # Unscales the gradients of optimizer's assigned params in-place
+                                self.scaler.unscale_(self.optimizer)
                             # Since the gradients of optimizer's assigned params are unscaled, clips as usual:
                             self.grad_norm = torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.clip_norm)
-                            # optimizer's gradients are already unscaled, so scaler.step does not unscale them,
-                            # although it still skips optimizer.step() if the gradients contain infs or NaNs.
-                            self.scaler.step(self.optimizer)
-                            # Updates the scale for next iteration.
-                            self.scaler.update()
+                            if self.use_scaler:
+                                # optimizer's gradients are already unscaled, so scaler.step does not unscale them,
+                                # although it still skips optimizer.step() if the gradients contain infs or NaNs.
+                                self.scaler.step(self.optimizer)
+                                # Updates the scale for next iteration.
+                                self.scaler.update()
+                            else:
+                                self.optimizer.step()
                             self.scheduler.step()
                             self.optimizer.zero_grad(set_to_none = True)
 
