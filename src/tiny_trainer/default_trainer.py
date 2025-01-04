@@ -66,9 +66,8 @@ class DefaultTrainer(Trainer):
                 wandb.save(model_name)
 
     def on_macro_step_end(self):
-        total_sample = self.total_step * self.world_size * self.dataloader.batch_size
-        self.eval_logger.update(total_sample)
-        self.save_logger.update(total_sample)
+        self.eval_logger.update(1)
+        self.save_logger.update(1)
         if self.rank == 0:
             self.timer.step()
             self.log_data["train/sample_per_second"] = self.gradient_accum_step * self.world_size * self.dataloader.batch_size * self.timer.rate()
