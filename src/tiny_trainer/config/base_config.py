@@ -60,6 +60,8 @@ class DDPConfig:
     enable: bool = True
     mode: DDPMode = field(default_factory = lambda : DDPMode.spawn)
     world_size: int = MISSING
+    addr : str = "localhost"
+    port : int = 12345
 
 @register_config(group="trainer", name="base")
 @dataclass

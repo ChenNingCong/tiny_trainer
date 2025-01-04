@@ -83,8 +83,8 @@ class Trainer(ABC):
     def setup_ddp(self, use_cuda : bool):
         rank = self.rank
         world_size = self.world_size
-        os.environ['MASTER_ADDR'] = 'localhost'
-        os.environ['MASTER_PORT'] = '12355'
+        os.environ['MASTER_ADDR'] = self.config.ddp.addr
+        os.environ['MASTER_PORT'] = str(self.config.ddp.port)
         os.environ['LOCAL_WORLD_SIZE'] = str(world_size)
         os.environ['WORLD_SIZE'] = str(world_size)
         os.environ['RANK'] = str(rank)
