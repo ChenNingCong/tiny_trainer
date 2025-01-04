@@ -28,6 +28,7 @@ class DefaultTrainer(Trainer):
         super().__init__(model, optimizer, scheduler, dataloader_sampler, config)
         self.timer : Timer = Timer()
         self.eval_logger = MonotonicCounter(i = config.eval_n_sample, f = self.eval_model)
+        self.val_logger = MonotonicCounter(i = config.save_n_sample, f = self.val_model)
         self.save_logger = MonotonicCounter(i = config.save_n_sample, f = self.save_model)
     
     @abstractmethod
@@ -68,6 +69,7 @@ class DefaultTrainer(Trainer):
     def on_macro_step_end(self):
         self.eval_logger.update(1)
         self.save_logger.update(1)
+        self.val_logger.update(1)
         if self.rank == 0:
             self.timer.step()
             self.log_data["train/sample_per_second"] = self.gradient_accum_step * self.world_size * self.dataloader.batch_size * self.timer.rate()
