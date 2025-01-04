@@ -28,7 +28,7 @@ class DefaultTrainer(Trainer):
         super().__init__(model, optimizer, scheduler, dataloader_sampler, config)
         self.timer : Timer = Timer()
         self.eval_logger = MonotonicCounter(i = config.eval_n_sample, f = self.eval_model)
-        self.val_logger = MonotonicCounter(i = config.save_n_sample, f = self.val_model)
+        self.val_logger = MonotonicCounter(i = config.val_n_sample, f = self.val_model)
         self.save_logger = MonotonicCounter(i = config.save_n_sample, f = self.save_model)
     
     @abstractmethod
